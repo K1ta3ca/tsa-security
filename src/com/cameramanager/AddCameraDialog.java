@@ -104,7 +104,7 @@ public class AddCameraDialog extends JDialog {
 
         add(buttonPanel, BorderLayout.SOUTH);
 
-        setSize(400, 200);
+        setSize(600, 300);
         setLocationRelativeTo(owner);
     }
 

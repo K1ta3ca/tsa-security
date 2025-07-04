@@ -35,8 +35,6 @@ import java.awt.MenuItem;
 import java.awt.AWTException;
 import java.awt.Image;
 import javax.swing.ImageIcon;
-import java.awt.Desktop;
-import java.io.IOException;
 
 public class CameraManager {
 
@@ -46,10 +44,6 @@ public class CameraManager {
     private static JPanel detailedViewPanel; // Panel for detailed view of a single camera
     private static List<EmbeddedMediaPlayerComponent> activePlayers = new ArrayList<>();
     private static final String[] LOW_LATENCY_OPTIONS = {":network-caching=675", ":live-caching=675", ":rtsp-tcp"};
-    private static JButton recordButton;
-    private static JLabel recordingStatusLabel;
-    private static boolean isRecording = false;
-    private static String recordDirectory = System.getProperty("user.home") + File.separator + "Videos"; // Default recording directory
     private static JFrame mainFrame; // Declare JFrame as a static field
     private static TrayIcon trayIcon;
 
@@ -59,7 +53,7 @@ public class CameraManager {
     }
 
     private static void createAndShowGui() {
-        mainFrame = new JFrame("Мениджър на камери"); // Assign to static field
+        mainFrame = new JFrame("TSA-Security"); // Assign to static field
         mainFrame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE); // Handle closing manually
         mainFrame.setSize(1280, 800);
         mainFrame.setLocationRelativeTo(null);
@@ -87,7 +81,7 @@ public class CameraManager {
             popup.add(showItem);
             popup.add(exitItem);
 
-            trayIcon = new TrayIcon(image, "Camera Manager", popup);
+            trayIcon = new TrayIcon(image, "TSA-Security", popup);
             trayIcon.setImageAutoSize(true);
             try {
                 tray.add(trayIcon);
@@ -159,28 +153,8 @@ public class CameraManager {
         JButton scanNetworkButton = new JButton("Сканирай мрежата");
         JButton removeCameraButton = new JButton("Премахни камера");
         JButton editCameraButton = new JButton("Редактирай камера");
-        JButton settingsButton = new JButton("Настройки");
-        recordButton = new JButton("Запис");
-        JButton openRecordingsButton = new JButton("Отвори записи");
-        recordingStatusLabel = new JLabel("Не се записва");
-        recordingStatusLabel.setForeground(textColor);
-        recordingStatusLabel.setFont(new Font("Segoe UI", Font.PLAIN, 14)); // По-голям шрифт
-
-        settingsButton.addActionListener(e -> {
-            SettingsDialog settingsDialog = new SettingsDialog(mainFrame);
-            settingsDialog.setVisible(true);
-        });
-
-        openRecordingsButton.addActionListener(e -> {
-            try {
-                Desktop.getDesktop().open(new File(recordDirectory));
-            } catch (IOException ex) {
-                JOptionPane.showMessageDialog(mainFrame, "Не може да се отвори директорията за записи: " + ex.getMessage(), "Грешка", JOptionPane.ERROR_MESSAGE);
-            }
-        });
-
         // Apply consistent button styling
-        JButton[] buttons = {addCameraButton, scanNetworkButton, removeCameraButton, editCameraButton, settingsButton, recordButton, openRecordingsButton};
+        JButton[] buttons = {addCameraButton, scanNetworkButton, removeCameraButton, editCameraButton};
         for (JButton button : buttons) {
             button.setBackground(accentColor);
             button.setForeground(textColor);
@@ -189,15 +163,6 @@ public class CameraManager {
             button.setBorder(BorderFactory.createEmptyBorder(8, 15, 8, 15)); // Увеличени отстояния
             buttonPanel.add(button);
         }
-        buttonPanel.add(recordingStatusLabel);
-
-        recordButton.addActionListener(e -> {
-            if (isRecording) {
-                stopRecording();
-            } else {
-                startRecording();
-            }
-        });
 
         mainPanel.add(buttonPanel, BorderLayout.NORTH);
 
@@ -306,82 +271,6 @@ public class CameraManager {
     private static void showGridView() {
         CardLayout cl = (CardLayout)(videoContainerPanel.getLayout());
         cl.show(videoContainerPanel, "GridView");
-    }
-
-private static void startRecording() {
-        if (activePlayers.isEmpty()) {
-            JOptionPane.showMessageDialog(null, "Няма активни видео потоци за запис.", "Грешка при запис", JOptionPane.WARNING_MESSAGE);
-            return;
-        }
-
-        JFileChooser fileChooser = new JFileChooser(recordDirectory);
-        fileChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-        fileChooser.setDialogTitle("Изберете директория за запис");
-
-        int userSelection = fileChooser.showSaveDialog(null);
-
-        if (userSelection == JFileChooser.APPROVE_OPTION) {
-            File selectedDirectory = fileChooser.getSelectedFile();
-            recordDirectory = selectedDirectory.getAbsolutePath();
-
-            // Запис на всички активни потоци
-            for (int i = 0; i < activePlayers.size(); i++) {
-                EmbeddedMediaPlayerComponent player = activePlayers.get(i);
-                Camera camera = cameraListModel.getElementAt(i);
-                String fileName = camera.getName().replaceAll("[^a-zA-Z0-9\\.\\-_]", "_") + "_" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")) + ".mp4";
-                String outputPath = recordDirectory + File.separator + fileName;
-
-                // Get the original MRL for the camera
-                String originalMrl = buildMrl(camera);
-                if (originalMrl == null) {
-                    System.err.println("Could not get MRL for camera: " + camera.getName());
-                    continue; // Skip this camera if MRL is null
-                }
-
-                // VLCJ транскодиране за запис
-                // The :sout option should be part of the MRL when starting the media for recording
-                String recordingMrl = originalMrl + " :sout=#file{dst=" + outputPath + "} :sout-keep";
-
-                System.out.println("Starting recording for camera: " + camera.getName() + " to " + outputPath);
-                System.out.println("Recording MRL: " + recordingMrl);
-
-                // Stop current playback before starting recording
-                player.mediaPlayer().controls().stop();
-
-                // Start the recording stream
-                String[] recordingOptions = {
-                    ":sout=#transcode{vcodec=h264,acodec=mp3,vb=800,ab=128}:std{access=file,mux=mp4,dst=" + outputPath + "}"
-                };
-                player.mediaPlayer().media().start(originalMrl, recordingOptions);
-            }
-            isRecording = true;
-            recordButton.setText("Спиране на записа");
-            recordingStatusLabel.setText("Записва се...");
-            recordingStatusLabel.setForeground(new Color(0x8BC34A)); // Green for recording
-        }
-    }
-
-    private static void stopRecording() {
-        for (int i = 0; i < activePlayers.size(); i++) {
-            EmbeddedMediaPlayerComponent player = activePlayers.get(i);
-            Camera camera = cameraListModel.getElementAt(i);
-
-            // Stop the recording stream
-            player.mediaPlayer().controls().stop();
-
-            // Restart the original live stream
-            String originalMrl = buildMrl(camera);
-            if (originalMrl != null) {
-                System.out.println("Restarting live stream for camera: " + camera.getName() + " from " + originalMrl);
-                player.mediaPlayer().media().play(originalMrl, LOW_LATENCY_OPTIONS);
-            } else {
-                System.err.println("Could not get original MRL to restart live stream for camera: " + camera.getName());
-            }
-        }
-        isRecording = false;
-        recordButton.setText("Запис");
-        recordingStatusLabel.setText("Не се записва");
-        recordingStatusLabel.setForeground(new Color(0xA0A0A0)); // Secondary color
     }
 
     
